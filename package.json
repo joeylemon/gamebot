@@ -1,0 +1,23 @@
+{
+  "name": "discord-bot",
+  "version": "1.0.0",
+  "description": "Discord bot for SitePoint",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Michiel Mulders",
+  "license": "ISC",
+  "dependencies": {
+    "canvas": "^2.6.1",
+    "cleverbot-free": "^1.0.4",
+    "discord.js": "^11.5.1",
+    "dotenv": "^8.2.0",
+    "genius-lyrics": "^3.0.0",
+    "jsdom": "^16.3.0",
+    "kayn": "^0.10.2",
+    "mathjs": "^7.0.2",
+    "moment-timezone": "^0.5.31",
+    "request": "^2.88.2"
+  }
+}
