@@ -97,12 +97,8 @@ class Song {
      * End this song and move to the next song in the queue
      */
     stop() {
-        const path = (new Error().stack).split("at ")[2].trim().replace(/\(|\)|file:\/\/\//g, "").split("/")
-        const file = path[path.length - 1].split(":")
-        const line = `${file[0]}:${file[1]}`
-        console.log("Request to stop song from", line)
-
         if (this.stream) this.stream.destroy()
+        if (this.dispatcher) this.dispatcher.destroy()
 
         // If the song has already been removed from queue, do nothing
         // Extraneous calls to stop() may come from destroying the stream
@@ -185,8 +181,10 @@ const subcommands = [
         usage: "!song stopall",
         desc: "Reset the queue and stop playing music",
         action: (msg) => {
-            for (const song of queue)
+            for (const song of queue) {
                 if (song.stream) song.stream.destroy()
+                if (song.dispatcher) song.dispatcher.destroy()
+            }
 
             queue = []
             if (utils.getVoiceConnection())
@@ -209,7 +207,7 @@ const subcommands = [
             }
 
             queue[0].dispatcher.pause()
-            msg.reply(`**${queue[0].song.titles.full}** has been paused\nResume it with \`!song resume\``)
+            msg.reply(`**${queue[0].song.titles.full}** has been paused\n*Resume it with* \`!song resume\``)
         }
     },
     {
