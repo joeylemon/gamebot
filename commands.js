@@ -68,16 +68,9 @@ const commands = [
     },
 
     {
-        name: "!stats",
-        usage: "!stats `@User`",
-        desc: "Lists somes stats about you %insult%s",
-        action: require('./cmds/stats.js')
-    },
-
-    {
         name: "!song",
-        usage: "!song <song>",
-        desc: "Play a song in the voice chat",
+        usage: "!song [queue|skip|stopall] <song>",
+        desc: "Play a song in the voice chat and show its lyrics",
         action: require('./cmds/song.js')
     },
 

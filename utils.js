@@ -10,11 +10,13 @@ let cachedChampions
  * @return {Array} The list of users
  */
 exports.getChatUsers = () => {
-    for (const channel of constants.client.channels.array()) {
-        if (channel.type === "voice" && channel.members.array().length > 0) {
-            return channel.members.array().map(m => m.user)
-        }
-    }
+    const channel = constants.client.guilds.cache.array()
+        .map(guild => guild.channels.cache.array()).flat()
+        .find(channel => channel.type === "voice" && channel.members.array().length > 0)
+
+    if (channel)
+        return channel.members.array().map(m => m.user)
+
     return new Array()
 }
 
@@ -23,7 +25,7 @@ exports.getChatUsers = () => {
  * @return {VoiceConnection} The voice connection
  */
 exports.getVoiceConnection = () => {
-    if (constants.client.voice.connections.array().length == 0)
+    if (constants.client.voice.connections.array().length === 0)
         return undefined
 
     return constants.client.voice.connections.array()[0]

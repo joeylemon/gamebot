@@ -57,14 +57,18 @@ class Song {
      */
     async play() {
         // If the bot isn't in the channel, go to it
-        if (!utils.getVoiceConnection() && this.msg.member.voiceChannel) {
-            this.msg.member.voiceChannel.join()
+        if (!utils.getVoiceConnection() && this.msg.member.voice.channel) {
+            this.msg.member.voice.channel.join()
         }
 
+        const that = this
         this.stream = ytdl(this.yt.uri)
-        utils.getVoiceConnection().playStream(this.stream)
-            .on('end', () => {
-                this.stop()
+        utils.getVoiceConnection().play(this.stream)
+            .on('finish', () => {
+                that.stop()
+            })
+            .on('error', err => {
+                console.error(`Error playing stream: ${err}`)
             })
 
         this.started = Date.now()
@@ -85,8 +89,11 @@ class Song {
                     url: this.song.raw.song_art_image_thumbnail_url,
                 },
                 fields: [
-                    { "name": "Lyrics", "value": lyrics.slice(0, 1024 - lyricsEnd.length) + lyricsEnd }
-                ]
+                    { "name": "Lyrics", "value": lyrics.slice(0, constants.LYRICS_LENGTH - lyricsEnd.length) + lyricsEnd }
+                ],
+                footer: {
+                    text: `Released ${this.song.raw.release_date_for_display}`
+                }
             }
         })
     }
@@ -95,6 +102,11 @@ class Song {
      * End this song and move to the next song in the queue
      */
     stop() {
+        const path = (new Error().stack).split("at ")[2].trim().replace(/\(|\)|file:\/\/\//g, "").split("/")
+        const file = path[path.length - 1].split(":")
+        const line = `${file[0]}:${file[1]}`
+        console.log("Request to stop song from", line)
+
         if (this.stream) this.stream.destroy()
 
         // If the song has already been removed from queue, do nothing
@@ -148,7 +160,7 @@ const subcommands = [
 
             msg.reply({
                 embed: {
-                    color: 0x1d7ccf,
+                    color: 0xffffff,
                     thumbnail: {
                         url: queue[1].song.raw.song_art_image_thumbnail_url,
                     },
@@ -206,7 +218,7 @@ module.exports = async (msg) => {
     msg.reply("Searching songs ...")
 
     // Find the song on youtube and get its audio url
-    const videos = await searchYoutube(term, { filter: 'video' })
+    const videos = await searchYoutube(`${term} audio`, { filter: 'video' })
 
     // Get the Genius song object
     const results = await Genius.tracks.search(term, { limit: 1 })
@@ -219,7 +231,30 @@ module.exports = async (msg) => {
     if (queue.length === 1) {
         queue[0].play()
     } else {
-        msg.reply(`Will play **${song.titles.full}** ${queue.length === 2 ? "next" : `in ${queue.length - 1} songs`} (in ${queueSong.startTime()})`)
+        msg.reply({
+            embed: {
+                color: 0xffffff,
+                title: song.titles.full,
+                url: song.url,
+                author: {
+                    name: song.artist.name,
+                    icon_url: song.artist.thumbnail,
+                    url: song.artist.url,
+                },
+                thumbnail: {
+                    url: song.raw.song_art_image_thumbnail_url,
+                },
+                fields: [
+                    {
+                        name: "Added song to the queue",
+                        value: `Will play in ${queueSong.startTime()} seconds (${queue.length === 2 ? "Up next" : `${queue.length - 2} songs ahead in queue`})`
+                    }
+                ],
+                footer: {
+                    text: `Released ${song.raw.release_date_for_display}`
+                }
+            }
+        })
     }
 }
 

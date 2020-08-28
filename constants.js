@@ -9,3 +9,5 @@ exports.GENIUS_API_TOKEN = process.env.GENIUS_API_TOKEN
 const Discord = require('discord.js')
 exports.client = new Discord.Client()
 this.client.login(this.DISCORD_TOKEN)
+
+exports.LYRICS_LENGTH = 600 // How many characters to display for a song's lyrics (max: 1024)
