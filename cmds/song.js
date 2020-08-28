@@ -140,6 +140,36 @@ const subcommands = [
         }
     },
     {
+        name: "shuffle",
+        usage: "!song shuffle",
+        desc: "Shuffle songs using the collaborative Spotify playlist",
+        action: (msg) => {
+            utils.getSpotifyPlaylist("37i9dQZF1DX0XUsuxWHRQd")
+                .then(async (playlist) => {
+                    const autoPlay = queue.length === 0
+
+                    const tracks = utils.shuffle(playlist.tracks.items).slice(0, 5)
+                    for (const track of tracks) {
+                        const term = track.track.name.split(" (")[0]
+                        console.log("searching song", term)
+
+                        // Find the song on youtube and get its audio url
+                        const videos = await searchYoutube(`${term} audio`, { filter: 'video' })
+
+                        // Get the Genius song object
+                        const results = await Genius.tracks.search(term, { limit: 1 })
+                        const song = results[0]
+
+                        // Add to queue
+                        queue.push(new Song(msg, videos[0], song))
+                    }
+
+                    if (autoPlay) queue[0].play()
+                })
+                .catch(err => console.error(err))
+        }
+    },
+    {
         name: "queue",
         usage: "!song queue",
         desc: "View the current queue",
@@ -265,15 +295,15 @@ module.exports = async (msg) => {
         msg.reply({
             embed: {
                 color: 0xffffff,
-                title: song.titles.full,
-                url: song.url,
+                title: queueSong.song.titles.full,
+                url: queueSong.song.url,
                 author: {
-                    name: song.artist.name,
-                    icon_url: song.artist.thumbnail,
-                    url: song.artist.url,
+                    name: queueSong.song.artist.name,
+                    icon_url: queueSong.song.artist.thumbnail,
+                    url: queueSong.song.artist.url,
                 },
                 thumbnail: {
-                    url: song.raw.song_art_image_thumbnail_url,
+                    url: queueSong.song.raw.song_art_image_thumbnail_url,
                 },
                 fields: [
                     {
@@ -282,12 +312,70 @@ module.exports = async (msg) => {
                     }
                 ],
                 footer: {
-                    text: `Released ${song.raw.release_date_for_display}`
+                    text: `Released ${queueSong.song.raw.release_date_for_display}`
                 }
             }
         })
     }
 }
+
+/*
+Example spotify playlist
+{
+  collaborative: false,
+  description: 'New music from A Boogie Wit da Hoodie, Cordae and Big Sean.',
+  external_urls: {
+    spotify: 'https://open.spotify.com/playlist/37i9dQZF1DX0XUsuxWHRQd'
+  },
+  followers: { href: null, total: 13285670 },
+  href: 'https://api.spotify.com/v1/playlists/37i9dQZF1DX0XUsuxWHRQd',
+  id: '37i9dQZF1DX0XUsuxWHRQd',
+  images: [
+    {
+      height: null,
+      url: 'https://i.scdn.co/image/ab67706f00000003c77d3f19f60b599489aa58db',
+      width: null
+    }
+  ],
+  name: 'RapCaviar',
+  owner: {
+    display_name: 'Spotify',
+    external_urls: { spotify: 'https://open.spotify.com/user/spotify' },
+    href: 'https://api.spotify.com/v1/users/spotify',
+    id: 'spotify',
+    type: 'user',
+    uri: 'spotify:user:spotify'
+  },
+  primary_color: '#F49B23',
+  public: true,
+  snapshot_id: 'MTU5ODU4NzMwNiwwMDAwMDRjNDAwMDAwMTc0MzMzYTgwOGIwMDAwMDE3NDMxODUyOTgw',
+  tracks: {
+    href: 'https://api.spotify.com/v1/playlists/37i9dQZF1DX0XUsuxWHRQd/tracks?offset=0&limit=100',
+    items: [
+      [Object], [Object], [Object], [Object],
+      [Object], [Object], [Object], [Object],
+      [Object], [Object], [Object], [Object],
+      [Object], [Object], [Object], [Object],
+      [Object], [Object], [Object], [Object],
+      [Object], [Object], [Object], [Object],
+      [Object], [Object], [Object], [Object],
+      [Object], [Object], [Object], [Object],
+      [Object], [Object], [Object], [Object],
+      [Object], [Object], [Object], [Object],
+      [Object], [Object], [Object], [Object],
+      [Object], [Object], [Object], [Object],
+      [Object], [Object]
+    ],
+    limit: 100,
+    next: null,
+    offset: 0,
+    previous: null,
+    total: 50
+  },
+  type: 'playlist',
+  uri: 'spotify:playlist:37i9dQZF1DX0XUsuxWHRQd'
+}
+*/
 
 /*
 Example await searchYoutube(term, { filter: 'video' }) video

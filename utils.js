@@ -1,4 +1,5 @@
 const fs = require("fs")
+const request = require("request")
 const constants = require("./constants.js")
 const config = require("./config.js")
 
@@ -44,6 +45,51 @@ exports.getMentionID = (arg) => {
         if (id.startsWith('!')) id = id.slice(1)
         return id
     }
+}
+
+exports.refreshSpotifyToken = () => {
+    return new Promise((resolve, reject) => {
+        request.post({
+            url: "https://accounts.spotify.com/api/token",
+            form: {
+                "grant_type": "refresh_token",
+                "client_id": constants.SPOTIFY_CLIENT_ID,
+                "client_secret": constants.SPOTIFY_CLIENT_SECRET,
+                "refresh_token": constants.SPOTIFY_REFRESH_TOKEN
+            }
+        }, (error, response, body) => {
+            if (error && error !== null)
+                reject(error)
+
+            if (response.statusCode && response.statusCode !== 200)
+                reject(`Status code ${response.statusCode}`)
+
+            resolve(JSON.parse(body).access_token)
+        })
+    })
+}
+
+exports.getSpotifyPlaylist = (playlist_id) => {
+    return new Promise((resolve, reject) => {
+        this.refreshSpotifyToken()
+            .then(access_token => {
+                request({
+                    url: `https://api.spotify.com/v1/playlists/${playlist_id}`,
+                    headers: {
+                        "Authorization": `Bearer ${access_token}`
+                    }
+                }, (error, response, body) => {
+                    if (error && error !== null)
+                        reject(error)
+
+                    if (response.statusCode && response.statusCode !== 200)
+                        reject(`Status code ${response.statusCode}`)
+
+                    resolve(JSON.parse(body))
+                })
+            })
+            .catch(err => reject(err))
+    })
 }
 
 /**
