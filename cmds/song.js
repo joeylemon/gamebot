@@ -1,47 +1,266 @@
-const utils = require('../utils.js');
-const constants = require("../constants.js");
-const Genius = new (require("genius-lyrics")).Client(constants.GENIUS_API_TOKEN);
+const utils = require('../utils.js')
+const constants = require("../constants.js")
 
-module.exports = (msg) => {
-    const args = msg.content.split(" ");
-    if (args.length <= 1) {
-        msg.reply(`Give me a song to look for, ${utils.getRandomInsult()}`);
-        return;
+const searchYoutube = require('simpleyt')
+const ytdl = require('ytdl-core')
+const { monthsShort } = require('moment-timezone')
+const Genius = new (require("genius-lyrics")).Client(constants.GENIUS_API_TOKEN)
+
+// Holds information about a song in the queue
+class Song {
+    constructor(msg, yt, song) {
+        this.id = Math.floor(Math.random() * 1000000)
+        this.msg = msg
+        this.yt = yt
+        this.song = song
+        this.started = 0
     }
 
-    msg.reply("Searching songs ...");
+    /**
+     * Get how long the song has been playing in seconds
+     */
+    duration() {
+        if (this.started === 0) return 0
 
-    const term = msg.content.replace("!song ", "");
-    let song;
+        return Math.floor((Date.now() - this.started) / 1000)
+    }
 
-    Genius.tracks.search(term, { limit: 1 })
-        .then(results => {
-            song = results[0];
-            return song.lyrics();
+    /**
+     * Get how many seconds left before the song ends
+     */
+    endTime() {
+        return this.yt.length.sec - this.duration()
+    }
+
+    /**
+     * Get how many seconds until this song begins
+     */
+    startTime() {
+        let seconds = 0
+        for (const song of queue) {
+            if (song.id === this.id) break
+            seconds += song.endTime()
+        }
+        return utils.formatSeconds(seconds)
+    }
+
+    /**
+     * Get the name of the user who requested this song
+     */
+    requester() {
+        return this.msg.author.username
+    }
+
+    /**
+     * Play the song in the voice chat by streaming the YouTube audio
+     * Additionally, print the lyrics to the song in an embed
+     */
+    async play() {
+        // If the bot isn't in the channel, go to it
+        if (!utils.getVoiceConnection() && this.msg.member.voiceChannel) {
+            this.msg.member.voiceChannel.join()
+        }
+
+        this.stream = ytdl(this.yt.uri)
+        utils.getVoiceConnection().playStream(this.stream)
+            .on('end', () => {
+                this.stop()
+            })
+
+        this.started = Date.now()
+
+        const lyrics = await this.song.lyrics()
+        const lyricsEnd = ` ...\n[View the rest on Genius](${this.song.url})`
+        this.msg.reply({
+            embed: {
+                color: 0xffffff,
+                title: `Now playing: ${this.song.titles.full}`,
+                url: this.song.url,
+                author: {
+                    name: this.song.artist.name,
+                    icon_url: this.song.artist.thumbnail,
+                    url: this.song.artist.url,
+                },
+                thumbnail: {
+                    url: this.song.raw.song_art_image_thumbnail_url,
+                },
+                fields: [
+                    { "name": "Lyrics", "value": lyrics.slice(0, 1024 - lyricsEnd.length) + lyricsEnd }
+                ]
+            }
         })
-        .then(lyrics => {
-            const lyricsEnd = ` ...\n[View the rest on Genius](${song.url})`;
+    }
+
+    /**
+     * End this song and move to the next song in the queue
+     */
+    stop() {
+        if (this.stream) this.stream.destroy()
+
+        // If the song has already been removed from queue, do nothing
+        // Extraneous calls to stop() may come from destroying the stream
+        if (!queue.find(s => s.id === this.id))
+            return
+
+        // Remove the song from the top of the queue
+        queue.shift()
+
+        if (queue.length > 0) {
+            console.log(`play next song in queue: ${queue[0].song.title}`)
+            queue[0].play()
+        } else {
+            console.log(`queue.length === ${queue.length}, disconnect`)
+            utils.getVoiceConnection().disconnect()
+        }
+    }
+}
+
+// The list of songs in the queue
+let queue = []
+
+// The list of subcommands to the !song command
+const subcommands = [
+    {
+        name: "help",
+        action: (msg) => {
             msg.reply({
                 embed: {
-                    color: 0xffffff,
-                    title: song.titles.full,
-                    url: song.url,
-                    author: {
-                        name: song.artist.name,
-                        icon_url: song.artist.thumbnail,
-                        url: song.artist.url,
-                    },
+                    color: 0x1d7ccf,
                     thumbnail: {
-                        url: song.raw.song_art_image_thumbnail_url,
+                        url: 'https://i.imgur.com/zcHXEgD.png',
                     },
-                    fields: [
-                        { "name": "Lyrics", "value": lyrics.slice(0, 1024 - lyricsEnd.length) + lyricsEnd }
-                    ]
+                    fields: subcommands.filter(cmd => cmd.usage && cmd.desc).map(cmd => {
+                        return { name: cmd.usage, value: cmd.desc }
+                    })
                 }
-            });
-        })
-        .catch(err => console.error(err));
+            })
+        }
+    },
+    {
+        name: "queue",
+        usage: "!song queue",
+        desc: "View the current queue",
+        action: (msg) => {
+            if (queue.length <= 1) {
+                msg.reply(`There aren't any songs in the queue, ${utils.getRandomInsult()}`)
+                return
+            }
+
+            msg.reply({
+                embed: {
+                    color: 0x1d7ccf,
+                    thumbnail: {
+                        url: queue[1].song.raw.song_art_image_thumbnail_url,
+                    },
+                    fields: queue.slice(1, queue.length).map(song => {
+                        return {
+                            name: song.song.titles.full,
+                            value: `Will play in ${song.startTime()} seconds\n*Requested by ${song.requester()}*`
+                        }
+                    })
+                }
+            })
+        }
+    },
+    {
+        name: "skip",
+        usage: "!song skip",
+        desc: "Move to the next song in the queue",
+        action: (msg) => {
+            if (queue.length > 0)
+                queue[0].stop()
+            else
+                msg.reply(`There's no song to skip, ${utils.getRandomInsult()}`)
+        }
+    },
+    {
+        name: "stopall",
+        usage: "!song stopall",
+        desc: "Reset the queue and stop playing music",
+        action: (msg) => {
+            for (const song of queue)
+                if (song.stream) song.stream.destroy()
+
+            queue = []
+            if (utils.getVoiceConnection())
+                utils.getVoiceConnection().disconnect()
+        }
+    }
+]
+
+module.exports = async (msg) => {
+    if (msg.content.split(" ").length <= 1) {
+        msg.reply(`Give me a song to look for, ${utils.getRandomInsult()}`)
+        return
+    }
+
+    const term = msg.content.replace("!song ", "")
+
+    // Check if the given term is a subcommand
+    const subcmd = subcommands.find(c => c.name === term)
+    if (subcmd) {
+        subcmd.action(msg)
+        return
+    }
+
+    msg.reply("Searching songs ...")
+
+    // Find the song on youtube and get its audio url
+    const videos = await searchYoutube(term, { filter: 'video' })
+
+    // Get the Genius song object
+    const results = await Genius.tracks.search(term, { limit: 1 })
+    const song = await results[0]
+
+    // Add to queue
+    const queueSong = new Song(msg, videos[0], song)
+    queue.push(queueSong)
+
+    if (queue.length === 1) {
+        queue[0].play()
+    } else {
+        msg.reply(`Will play **${song.titles.full}** ${queue.length === 2 ? "next" : `in ${queue.length - 1} songs`} (in ${queueSong.startTime()})`)
+    }
 }
+
+/*
+Example await searchYoutube(term, { filter: 'video' }) video
+{
+  type: 'video',
+  identifier: 'fazMSCZg-mw',
+  uri: 'https://www.youtube.com/watch?v=fazMSCZg-mw',
+  title: 'Pop Smoke - Hello (Audio) ft. A Boogie Wit da Hoodie',
+  author: {
+    name: 'POP SMOKE',
+    profile: 'https://yt3.ggpht.com/a-/AOh14Gg5p4cNX9FW86mot7xg7RMGOvCgdeAYGDZwkw=s68-c-k-c0x00ffffff-no-rj-mo',
+    uri: 'https://www.youtube.com/channel/UCSaPKJpNd-Mkm6hhelIYSlQ'
+  },
+  length: { ms: 192000, sec: 192 },
+  isStream: false,
+  thumbnails: [
+    {
+      url: 'https://i.ytimg.com/vi/fazMSCZg-mw/hqdefault.jpg?sqp=-oaymwEiCKgBEF5IWvKriqkDFQgBFQAAAAAYASUAAMhCPQCAokN4AQ==&rs=AOn4CLBurC3IMBaAyusmuM0sDIxM7DqWTA',
+      width: 168,
+      height: 94
+    },
+    {
+      url: 'https://i.ytimg.com/vi/fazMSCZg-mw/hqdefault.jpg?sqp=-oaymwEiCMQBEG5IWvKriqkDFQgBFQAAAAAYASUAAMhCPQCAokN4AQ==&rs=AOn4CLAQ2ySRbjlj0r1zUA2gam-CcMkY1Q',
+      width: 196,
+      height: 110
+    },
+    {
+      url: 'https://i.ytimg.com/vi/fazMSCZg-mw/hqdefault.jpg?sqp=-oaymwEjCPYBEIoBSFryq4qpAxUIARUAAAAAGAElAADIQj0AgKJDeAE=&rs=AOn4CLDm61vac-nwSMQ8wo0b-7rZBmen6g',
+      width: 246,
+      height: 138
+    },
+    {
+      url: 'https://i.ytimg.com/vi/fazMSCZg-mw/hqdefault.jpg?sqp=-oaymwEjCNACELwBSFryq4qpAxUIARUAAAAAGAElAADIQj0AgKJDeAE=&rs=AOn4CLAhHqb1zexrWeLKAdHplYgwGITMYw',
+      width: 336,
+      height: 188
+    }
+  ]
+}
+*/
 
 /* Example Genius.tracks.search(term, { limit: 1 }) song
 [ Track {

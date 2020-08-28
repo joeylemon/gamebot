@@ -77,7 +77,7 @@ const commands = [
     {
         name: "!song",
         usage: "!song <song>",
-        desc: "Get some information for a song",
+        desc: "Play a song in the voice chat",
         action: require('./cmds/song.js')
     },
 

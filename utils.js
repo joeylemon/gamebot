@@ -19,6 +19,17 @@ exports.getChatUsers = () => {
 }
 
 /**
+ * Get the current voice connection of the bot
+ * @return {VoiceConnection} The voice connection
+ */
+exports.getVoiceConnection = () => {
+    if (constants.client.voice.connections.array().length == 0)
+        return undefined
+
+    return constants.client.voice.connections.array()[0]
+}
+
+/**
  * Get the ID from an @User argument
  * @param {string} arg The argument with the @User string
  * @return {string} The ID of the @User
@@ -93,6 +104,25 @@ exports.formatMilliseconds = (ms) => {
     const h = hours > 0 ? `${hours} hours ` : ``
 
     return `${d}${h}${minutes} minutes`
+}
+
+/**
+ * Format seconds into a MM:SS string
+ * @param {number} s The seconds
+ * @return {string} The formatted string
+ * @usage
+ *   formatSeconds(65);         // -> '1m 5s'
+ */
+exports.formatSeconds = (s) => {
+    if (s < 0) return "0s"
+
+    const minutes = Math.floor(s / 60)
+    const seconds = s % 60
+
+    if (minutes === 0)
+        return `${seconds}s`
+
+    return `${minutes}m ${seconds}s`
 }
 
 /**
