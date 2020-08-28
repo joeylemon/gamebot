@@ -1,5 +1,5 @@
 /**
- * Discord bot for #bigdickplays
+ * Discord bot for our gaming server
  * 
  * Run it:
  *      make run
