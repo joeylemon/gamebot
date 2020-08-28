@@ -69,7 +69,7 @@ const commands = [
 
     {
         name: "!song",
-        usage: "!song [queue|skip|stopall] <song>",
+        usage: "!song [help] <song>",
         desc: "Play a song in the voice chat and show its lyrics",
         action: require('./cmds/song.js')
     },

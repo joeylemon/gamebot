@@ -3,7 +3,6 @@ const constants = require("../constants.js")
 
 const searchYoutube = require('simpleyt')
 const ytdl = require('ytdl-core')
-const { monthsShort } = require('moment-timezone')
 const Genius = new (require("genius-lyrics")).Client(constants.GENIUS_API_TOKEN)
 
 // Holds information about a song in the queue
@@ -13,16 +12,14 @@ class Song {
         this.msg = msg
         this.yt = yt
         this.song = song
-        this.started = 0
     }
 
     /**
      * Get how long the song has been playing in seconds
      */
     duration() {
-        if (this.started === 0) return 0
-
-        return Math.floor((Date.now() - this.started) / 1000)
+        if (!this.dispatcher) return 0
+        return Math.floor(this.dispatcher.streamTime / 1000)
     }
 
     /**
@@ -63,15 +60,13 @@ class Song {
 
         const that = this
         this.stream = ytdl(this.yt.uri)
-        utils.getVoiceConnection().play(this.stream)
+        this.dispatcher = utils.getVoiceConnection().play(this.stream)
             .on('finish', () => {
                 that.stop()
             })
             .on('error', err => {
                 console.error(`Error playing stream: ${err}`)
             })
-
-        this.started = Date.now()
 
         const lyrics = await this.song.lyrics()
         const lyricsEnd = ` ...\n[View the rest on Genius](${this.song.url})`
@@ -167,7 +162,7 @@ const subcommands = [
                     fields: queue.slice(1, queue.length).map(song => {
                         return {
                             name: song.song.titles.full,
-                            value: `Will play in ${song.startTime()} seconds\n*Requested by ${song.requester()}*`
+                            value: `Will play in ${song.startTime()}\n*Requested by ${song.requester()}*`
                         }
                     })
                 }
@@ -197,6 +192,44 @@ const subcommands = [
             if (utils.getVoiceConnection())
                 utils.getVoiceConnection().disconnect()
         }
+    },
+    {
+        name: "pause",
+        usage: "!song pause",
+        desc: "Pause the current song",
+        action: (msg) => {
+            if (queue.length === 0) {
+                msg.reply(`There's no song to pause, ${utils.getRandomInsult()}`)
+                return
+            }
+
+            if (queue[0].dispatcher.paused) {
+                msg.reply(`The song is already paused, ${utils.getRandomInsult()}`)
+                return
+            }
+
+            queue[0].dispatcher.pause()
+            msg.reply(`**${queue[0].song.titles.full}** has been paused\nResume it with \`!song resume\``)
+        }
+    },
+    {
+        name: "resume",
+        usage: "!song resume",
+        desc: "Resume the current song",
+        action: (msg) => {
+            if (queue.length === 0) {
+                msg.reply(`There's no song to resume, ${utils.getRandomInsult()}`)
+                return
+            }
+
+            if (!queue[0].dispatcher.paused) {
+                msg.reply(`The song isn't even paused, ${utils.getRandomInsult()}`)
+                return
+            }
+
+            queue[0].dispatcher.resume()
+            msg.reply(`**${queue[0].song.titles.full}** has been resumed`)
+        }
     }
 ]
 
@@ -222,7 +255,7 @@ module.exports = async (msg) => {
 
     // Get the Genius song object
     const results = await Genius.tracks.search(term, { limit: 1 })
-    const song = await results[0]
+    const song = results[0]
 
     // Add to queue
     const queueSong = new Song(msg, videos[0], song)
@@ -247,7 +280,7 @@ module.exports = async (msg) => {
                 fields: [
                     {
                         name: "Added song to the queue",
-                        value: `Will play in ${queueSong.startTime()} seconds (${queue.length === 2 ? "Up next" : `${queue.length - 2} songs ahead in queue`})`
+                        value: `Will play in ${queueSong.startTime()} (${queue.length === 2 ? "Up next" : `${queue.length - 2} songs ahead in queue`})`
                     }
                 ],
                 footer: {
