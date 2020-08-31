@@ -253,6 +253,7 @@ const subcommands = [
     },
     {
         name: "pause",
+        aliases: ["stop"],
         usage: "!song pause",
         desc: "Pause the current song",
         action: (msg) => {
@@ -267,11 +268,12 @@ const subcommands = [
             }
 
             queue[0].dispatcher.pause()
-            msg.reply(`**${queue[0].song.titles.full}** has been paused\n*Resume it with* \`!song resume\``)
+            msg.reply(`**${queue[0].song.titles.full}** has been paused\n*Resume it with* \`!song resume\`\n*Skip it with* \`!song skip\``)
         }
     },
     {
         name: "resume",
+        aliases: ["play"],
         usage: "!song resume",
         desc: "Resume the current song",
         action: (msg) => {
@@ -300,7 +302,7 @@ module.exports = async (msg) => {
     const term = msg.content.replace("!song ", "")
 
     // Check if the given term is a subcommand
-    const subcmd = subcommands.find(c => c.name === term)
+    const subcmd = subcommands.find(c => c.name === term) || subcommands.find(c => c.aliases && c.aliases.includes(term))
     if (subcmd) {
         subcmd.action(msg)
         return
