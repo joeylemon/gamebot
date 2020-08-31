@@ -7,11 +7,33 @@ const Genius = new (require("genius-lyrics")).Client(constants.GENIUS_API_TOKEN)
 
 // Holds information about a song in the queue
 class Song {
-    constructor(msg, yt, song) {
+    constructor(msg, term) {
         this.id = Math.floor(Math.random() * 1000000)
         this.msg = msg
-        this.yt = yt
-        this.song = song
+        this.term = term
+        this.search()
+    }
+
+    async search() {
+        return new Promise((resolve, reject) => {
+            // Skip search if we've already searched for this song
+            if (this.song && this.yt)
+                resolve()
+
+            Genius.tracks.search(this.term, { limit: 1 })
+                .then(results => {
+                    this.song = results[0]
+                    if (this.yt) resolve()
+                })
+                .catch(err => reject(err))
+
+            searchYoutube(`${this.term} audio`, { filter: 'video' })
+                .then(videos => {
+                    this.yt = videos[0]
+                    if (this.song) resolve()
+                })
+                .catch(err => reject(err))
+        })
     }
 
     /**
@@ -53,6 +75,8 @@ class Song {
      * Additionally, print the lyrics to the song in an embed
      */
     async play() {
+        await this.search()
+
         // If the bot isn't in the channel, go to it
         if (!utils.getVoiceConnection() && this.msg.member.voice.channel) {
             this.msg.member.voice.channel.join()
@@ -146,25 +170,17 @@ const subcommands = [
         action: (msg) => {
             utils.getSpotifyPlaylist("37i9dQZF1DX0XUsuxWHRQd")
                 .then(async (playlist) => {
-                    const autoPlay = queue.length === 0
-
                     const tracks = utils.shuffle(playlist.tracks.items).slice(0, 5)
                     for (const track of tracks) {
-                        const term = track.track.name.split(" (")[0]
+                        const term = `${track.track.name.split(" (")[0]} ${track.track.artists[0].name}`
                         console.log("searching song", term)
 
-                        // Find the song on youtube and get its audio url
-                        const videos = await searchYoutube(`${term} audio`, { filter: 'video' })
+                        queue.push(new Song(msg, term))
 
-                        // Get the Genius song object
-                        const results = await Genius.tracks.search(term, { limit: 1 })
-                        const song = results[0]
-
-                        // Add to queue
-                        queue.push(new Song(msg, videos[0], song))
+                        if (queue.length === 1)
+                            queue[0].play()
                     }
-
-                    if (autoPlay) queue[0].play()
+                    msg.reply("Added random songs from the Spotify playlist to the queue\nUse `!song queue` to view the queue")
                 })
                 .catch(err => console.error(err))
         }
@@ -179,20 +195,31 @@ const subcommands = [
                 return
             }
 
-            msg.reply({
-                embed: {
-                    color: 0xffffff,
-                    thumbnail: {
-                        url: queue[1].song.raw.song_art_image_thumbnail_url,
-                    },
-                    fields: queue.slice(1, queue.length).map(song => {
-                        return {
-                            name: song.song.titles.full,
-                            value: `Will play in ${song.startTime()}\n*Requested by ${song.requester()}*`
+            let searched = 0
+            for (const song of queue) {
+                song.search()
+                    .then(() => {
+                        searched++
+
+                        if (searched === queue.length) {
+                            msg.reply({
+                                embed: {
+                                    color: 0xffffff,
+                                    thumbnail: {
+                                        url: queue[1].song.raw.song_art_image_thumbnail_url,
+                                    },
+                                    fields: queue.slice(1, queue.length).map(song => {
+                                        return {
+                                            name: song.song.titles.full,
+                                            value: `Will play in ${song.startTime()}\n*Requested by ${song.requester()}*`
+                                        }
+                                    })
+                                }
+                            })
                         }
                     })
-                }
-            })
+                    .catch(err => console.error(err))
+            }
         }
     },
     {
@@ -276,22 +303,19 @@ module.exports = async (msg) => {
         return
     }
 
-    msg.reply("Searching songs ...")
-
-    // Find the song on youtube and get its audio url
-    const videos = await searchYoutube(`${term} audio`, { filter: 'video' })
-
-    // Get the Genius song object
-    const results = await Genius.tracks.search(term, { limit: 1 })
-    const song = results[0]
+    if (!msg.member.voice.channel) {
+        msg.reply(`You're not in a voice channel, ${utils.getRandomInsult()}`)
+        return
+    }
 
     // Add to queue
-    const queueSong = new Song(msg, videos[0], song)
+    const queueSong = new Song(msg, term)
     queue.push(queueSong)
 
     if (queue.length === 1) {
         queue[0].play()
     } else {
+        await queueSong.search()
         msg.reply({
             embed: {
                 color: 0xffffff,
