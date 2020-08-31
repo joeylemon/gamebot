@@ -47,6 +47,12 @@ exports.getMentionID = (arg) => {
     }
 }
 
+/**
+ * Get the application's next access token
+ * 
+ * Every access token expires in 60 minutes, however, you can simply refresh the token
+ * before every API call to simplify things (which is what we do)
+ */
 exports.refreshSpotifyToken = () => {
     return new Promise((resolve, reject) => {
         request.post({
@@ -69,6 +75,10 @@ exports.refreshSpotifyToken = () => {
     })
 }
 
+/**
+ * Get a spotify playlist
+ * @param {string} playlist_id The id of the playlist
+ */
 exports.getSpotifyPlaylist = (playlist_id) => {
     return new Promise((resolve, reject) => {
         this.refreshSpotifyToken()
