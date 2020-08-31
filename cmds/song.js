@@ -14,7 +14,10 @@ class Song {
         this.search()
     }
 
-    async search() {
+    /**
+     * Loads the Genius and YouTube information for the song
+     */
+    search() {
         return new Promise((resolve, reject) => {
             // Skip search if we've already searched for this song
             if (this.song && this.yt)
@@ -313,6 +316,7 @@ module.exports = async (msg) => {
     queue.push(queueSong)
 
     if (queue.length === 1) {
+        msg.reply("Searching songs ...")
         queue[0].play()
     } else {
         await queueSong.search()
