@@ -1,5 +1,6 @@
 const utils = require('../utils.js')
 const constants = require("../constants.js")
+const config = require("../config.js")
 
 const searchYoutube = require('simpleyt')
 const ytdl = require('ytdl-core')
@@ -171,7 +172,7 @@ const subcommands = [
         usage: "!song shuffle",
         desc: "Shuffle songs using the collaborative Spotify playlist",
         action: (msg) => {
-            utils.getSpotifyPlaylist("37i9dQZF1DX0XUsuxWHRQd")
+            utils.getSpotifyPlaylist(config.get("spotify_playlist_id"))
                 .then(async (playlist) => {
                     const tracks = utils.shuffle(playlist.tracks.items).slice(0, 5)
                     for (const track of tracks) {
