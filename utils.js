@@ -16,7 +16,7 @@ exports.getChatUsers = () => {
         .find(channel => channel.type === "voice" && channel.members.array().length > 0)
 
     if (channel)
-        return channel.members.array().map(m => m.user)
+        return channel.members.array().filter(m => !m.user.bot).map(m => m.user)
 
     return new Array()
 }
@@ -45,6 +45,31 @@ exports.getMentionID = (arg) => {
         if (id.startsWith('!')) id = id.slice(1)
         return id
     }
+}
+
+/**
+ * An unexported helper function to get a playlist's tracks page-by-page
+ * @param {string} playlist_id The id of the playlist to get tracks from
+ * @param {string} access_token The Spotify API access token, generated with refreshSpotifyToken()
+ * @param {string} next The url to the next page of tracks. If empty, get the first page
+ */
+function getPlaylistTracks(playlist_id, access_token, next) {
+    return new Promise((resolve, reject) => {
+        request({
+            url: next ? next : `https://api.spotify.com/v1/playlists/${playlist_id}/tracks`,
+            headers: {
+                "Authorization": `Bearer ${access_token}`
+            }
+        }, (error, response, body) => {
+            if (error && error !== null)
+                reject(error)
+
+            if (response.statusCode && response.statusCode !== 200)
+                reject(`Status code ${response.statusCode}`)
+
+            resolve(JSON.parse(body))
+        })
+    })
 }
 
 /**
@@ -82,21 +107,18 @@ exports.refreshSpotifyToken = () => {
 exports.getSpotifyPlaylist = (playlist_id) => {
     return new Promise((resolve, reject) => {
         this.refreshSpotifyToken()
-            .then(access_token => {
-                request({
-                    url: `https://api.spotify.com/v1/playlists/${playlist_id}`,
-                    headers: {
-                        "Authorization": `Bearer ${access_token}`
-                    }
-                }, (error, response, body) => {
-                    if (error && error !== null)
-                        reject(error)
+            .then(async access_token => {
+                console.log("Fetching spotify playlist using access_token", access_token)
 
-                    if (response.statusCode && response.statusCode !== 200)
-                        reject(`Status code ${response.statusCode}`)
+                let playlist = []
+                let next = undefined
+                do {
+                    const tracks = await getPlaylistTracks(playlist_id, access_token, next)
+                    playlist = playlist.concat(tracks.items)
+                    next = tracks.next
+                } while (next)
 
-                    resolve(JSON.parse(body))
-                })
+                resolve(playlist)
             })
             .catch(err => reject(err))
     })
