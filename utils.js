@@ -73,6 +73,30 @@ function getPlaylistTracks(playlist_id, access_token, next) {
 }
 
 /**
+ * An unexported helper function to get a playlist's information
+ * @param {string} playlist_id The id of the playlist to get information of
+ * @param {string} access_token The Spotify API access token, generated with refreshSpotifyToken()
+ */
+function getPlaylistInformation(playlist_id, access_token) {
+    return new Promise((resolve, reject) => {
+        request({
+            url: `https://api.spotify.com/v1/playlists/${playlist_id}`,
+            headers: {
+                "Authorization": `Bearer ${access_token}`
+            }
+        }, (error, response, body) => {
+            if (error && error !== null)
+                reject(error)
+
+            if (response.statusCode && response.statusCode !== 200)
+                reject(`Status code ${response.statusCode}`)
+
+            resolve(JSON.parse(body))
+        })
+    })
+}
+
+/**
  * Get the application's next access token
  * 
  * Every access token expires in 60 minutes, however, you can simply refresh the token
@@ -108,7 +132,9 @@ exports.getSpotifyPlaylist = (playlist_id) => {
     return new Promise((resolve, reject) => {
         this.refreshSpotifyToken()
             .then(async access_token => {
-                console.log("Fetching spotify playlist using access_token", access_token)
+                console.log("fetching spotify playlist using access_token", access_token)
+
+                const info = await getPlaylistInformation(playlist_id, access_token)
 
                 let playlist = []
                 let next = undefined
@@ -118,7 +144,7 @@ exports.getSpotifyPlaylist = (playlist_id) => {
                     next = tracks.next
                 } while (next)
 
-                resolve(playlist)
+                resolve([info, playlist])
             })
             .catch(err => reject(err))
     })

@@ -8,24 +8,10 @@ const Genius = new (require("genius-lyrics")).Client(constants.GENIUS_API_TOKEN)
 
 // Holds information about a song in the queue
 class Song {
-    constructor(msg, term, info) {
+    constructor(msg, term) {
         this.id = Math.floor(Math.random() * 1000000)
         this.msg = msg
         this.term = term
-
-        // If the constructor is given a Spotify track object, populate the song info instead of searching on Genius
-        if (info) {
-            this.song = {
-                spotify: true,
-                titles: { full: `${info.track.name} by ${info.track.artists[0].name}` },
-                url: info.track.href,
-                artist: { name: info.track.artists[0].name, thumbnail: info.track.album.images[0].url, url: info.track.artists[0].href },
-                raw: { song_art_image_thumbnail_url: info.track.album.images[0].url, release_date_for_display: info.track.album.release_date }
-            }
-            this.song_length = Math.floor(info.track.duration_ms / 1000)
-        } else {
-            this.search()
-        }
     }
 
     /**
@@ -38,7 +24,7 @@ class Song {
                 resolve()
 
             // Search the song on Genius if we haven't already
-            if (!this.song) {
+            if (!this.song || this.song.spotify) {
                 Genius.tracks.search(this.term, { limit: 1 })
                     .then(results => {
                         this.song = results[0]
@@ -78,8 +64,8 @@ class Song {
      * Get how many seconds left before the song ends
      */
     endTime() {
-        const length = this.yt ? this.yt.length.sec : this.song_length
-        return length - this.duration()
+        if (!this.yt) return 0
+        return this.yt.length.sec - this.duration()
     }
 
     /**
@@ -87,7 +73,7 @@ class Song {
      */
     startTime() {
         let seconds = 0
-        for (const song of queue) {
+        for (const song of queue.concat(playlist.slice(1, Math.min(6, playlist.length)))) {
             if (song.id === this.id) break
             seconds += song.endTime()
         }
@@ -119,55 +105,58 @@ class Song {
             this.msg.member.voice.channel.join()
         }
 
-        const that = this
-        this.stream = await ytdl(this.yt.uri)
+        try {
+            const that = this
+            this.stream = await ytdl(this.yt.uri, { quality: "highestaudio", filter: "audioonly", highWaterMark: 1 << 25 })
 
-        this.dispatcher = utils.getVoiceConnection().play(this.stream, { type: "opus" })
-            .on('finish', () => { that.stop() })
-            .on('end', () => { that.stop() })
-            .on('close', () => { that.stop() })
-            .on('error', err => {
-                console.error(`Error playing stream: ${err}`)
-            })
+            this.dispatcher = utils.getVoiceConnection().play(this.stream, { type: "opus" })
+                .on('finish', () => { that.stop() })
+                .on('end', () => { that.stop() })
+                .on('close', () => { that.stop() })
+                .on('error', err => {
+                    console.error(`Error playing stream: ${err}`)
+                })
 
-        if (this.song.empty) {
-            this.msg.reply(`Now playing: ${this.term}`)
-        } else {
-            let lyrics
-
-            if (this.song.spotify) {
-                lyrics = "[View the lyrics on Genius](https://genius.com)"
+            if (this.song.empty) {
+                this.msg.reply(`Now playing: ${this.term}`)
             } else {
-                lyrics = await this.song.lyrics()
+                let lyrics = await this.song.lyrics()
                 if (lyrics instanceof Error) {
                     lyrics = "No lyrics found"
                 }
 
                 const lyricsEnd = ` ...\n[View the rest on Genius](${this.song.url})`
                 lyrics = lyrics.slice(0, constants.LYRICS_LENGTH - lyricsEnd.length) + lyricsEnd
-            }
 
-            this.msg.reply({
-                embed: {
-                    color: 0xffffff,
-                    title: `Now playing: ${this.song.titles.full}`,
-                    url: this.song.url,
-                    author: {
-                        name: this.song.artist.name,
-                        icon_url: this.song.artist.thumbnail,
-                        url: this.song.artist.url,
-                    },
-                    thumbnail: {
-                        url: this.song.raw.song_art_image_thumbnail_url,
-                    },
-                    fields: [
-                        { "name": "Lyrics", "value": lyrics }
-                    ],
-                    footer: {
-                        text: this.song.raw.release_date_for_display ? `Released ${this.song.raw.release_date_for_display}` : ``
+                let footer = `Duration: ${utils.formatSeconds(this.yt.length.sec)}`
+                if (this.song.raw.release_date_for_display)
+                    footer += `\nReleased ${this.song.raw.release_date_for_display}`
+
+                this.msg.reply({
+                    embed: {
+                        color: 0xffffff,
+                        title: `Now playing: ${this.song.titles.full}`,
+                        url: this.song.url,
+                        author: {
+                            name: this.song.artist.name,
+                            icon_url: this.song.artist.thumbnail,
+                            url: this.song.artist.url,
+                        },
+                        thumbnail: {
+                            url: this.song.raw.song_art_image_thumbnail_url,
+                        },
+                        fields: [
+                            { "name": "Search Term", "value": this.term },
+                            { "name": "Lyrics", "value": lyrics }
+                        ],
+                        footer: {
+                            text: footer
+                        }
                     }
-                }
-            })
+                })
+            }
+        } catch (err) {
+            this.stop()
         }
     }
 
@@ -175,22 +164,31 @@ class Song {
      * End this song and move to the next song in the queue
      */
     stop() {
-        if (this.stream) this.stream.destroy()
-        if (this.dispatcher) this.dispatcher.destroy()
-
         // If the song has already been removed from queue, do nothing
         // Extraneous calls to stop() may come from destroying the stream
-        if (!queue.find(s => s.id === this.id))
+        if (!queue.find(s => s.id === this.id)) {
+            console.log("stop() was called for a second time, do nothing")
             return
+        } else {
+            console.log("stop() was called")
+        }
+
+        if (this.stream) this.stream.destroy()
+        if (this.dispatcher) this.dispatcher.destroy()
 
         // Remove the song from the top of the queue
         queue.shift()
 
         if (queue.length > 0) {
-            console.log(`play next song in queue: ${queue[0].song.title}`)
+            console.log(`play next song in queue: ${queue[0].song.titles.full}`)
+            queue[0].play()
+        } else if (playlist.length > 0) {
+            console.log(`play next song in playlist: ${playlist[0].term}`)
+            queue.push(playlist[0])
+            playlist.shift()
             queue[0].play()
         } else {
-            console.log(`queue.length === ${queue.length}, disconnect`)
+            console.log(`nothing in queue nor playlist, disconnect`)
             utils.getVoiceConnection().disconnect()
         }
     }
@@ -216,26 +214,6 @@ function stopAll() {
         utils.getVoiceConnection().disconnect()
 }
 
-/**
- * Retrieve the Spotify playlist, either from the Spotify API or from the last cached version
- */
-function getPlaylist() {
-    return new Promise((resolve, reject) => {
-        if (playlist.length > 7) {
-            console.log("a cached playlist already exists with", playlist.length, "songs")
-            return resolve(playlist)
-        }
-
-        utils.getSpotifyPlaylist(config.get("spotify_playlist_id"))
-            .then(p => {
-                console.log("no cached playlist, retrieved spotify endpoint with", p.length, "songs")
-                playlist = utils.shuffle(p)
-                return resolve(playlist)
-            })
-            .catch(err => reject(err))
-    })
-}
-
 // The list of subcommands to the !song command
 const subcommands = [
     {
@@ -259,23 +237,42 @@ const subcommands = [
         usage: "!song shuffle",
         desc: "Shuffle songs using the collaborative Spotify playlist",
         action: (msg) => {
-            getPlaylist()
-                .then(async (playlist) => {
-                    // Take a handful of tracks from the playlist
-                    const tracks = playlist.slice(0, 7)
-                    playlist.splice(0, 7)
+            if (playlist.length > 0) {
+                msg.reply(`The playlist is already playing, ${utils.getRandomInsult()}`)
+                return
+            }
 
-                    for (const track of tracks) {
-                        const term = `${track.track.name.split(" (")[0]} ${track.track.artists[0].name}`
-                        console.log("searching song", term)
+            utils.getSpotifyPlaylist(config.get("spotify_playlist_id"))
+                .then(arr => {
+                    const info = arr[0]
+                    const tracks = arr[1]
 
-                        queue.push(new Song(msg, term, track))
+                    console.log(`retrieved ${tracks.length} songs from spotify`)
+                    playlist = utils.shuffle(tracks).map(t => new Song(msg, `${t.track.name.split(" (")[0].split(" - ")[0]} ${t.track.artists[0].name}`))
 
-                        if (queue.length === 1)
-                            queue[0].play()
+                    if (queue.length === 0) {
+                        queue.push(playlist[0])
+                        queue[0].play()
                     }
 
-                    msg.reply("Added random songs from the Spotify playlist to the queue\nUse `!song queue` to view the queue")
+                    msg.reply({
+                        embed: {
+                            color: 0xffffff,
+                            title: `Now shuffling: ${info.name}`,
+                            url: info.external_urls.spotify,
+                            author: {
+                                name: info.owner.display_name,
+                                icon_url: "https://i.imgur.com/oze2HmA.png",
+                                url: info.owner.external_urls.spotify,
+                            },
+                            thumbnail: {
+                                url: info.images[0].url,
+                            },
+                            fields: [
+                                { name: "Songs", value: playlist.map(s => s.term).slice(0, 5).join("\n") + `\n... [and ${playlist.length - 5} more](${info.external_urls.spotify})` }
+                            ]
+                        }
+                    })
                 })
                 .catch(err => console.error(err))
         }
@@ -285,25 +282,32 @@ const subcommands = [
         usage: "!song queue",
         desc: "View the current queue",
         action: (msg) => {
-            if (queue.length <= 1) {
+            if (queue.length <= 1 && playlist.length === 0) {
                 msg.reply(`There aren't any songs in the queue, ${utils.getRandomInsult()}`)
                 return
             }
 
-            msg.reply({
-                embed: {
-                    color: 0xffffff,
-                    thumbnail: {
-                        url: queue[1].song.raw.song_art_image_thumbnail_url,
-                    },
-                    fields: queue.slice(1, queue.length).map(song => {
-                        return {
-                            name: song.song.titles.full,
-                            value: `Will play in ${song.startTime()}\n*Requested by ${song.requester()}*`
+            const songs = queue.length > 1 ?
+                queue.slice(0, queue.length) :
+                playlist.slice(0, Math.min(5, playlist.length))
+
+            Promise.all(songs.map(s => { return s.search() }))
+                .then(() => {
+                    msg.reply({
+                        embed: {
+                            color: 0xffffff,
+                            thumbnail: {
+                                url: songs[0].song.raw.song_art_image_thumbnail_url,
+                            },
+                            fields: songs.map(song => {
+                                return {
+                                    name: song.song.titles.full,
+                                    value: `${song.startTime() === "0s" ? `Now playing` : `Will play in ${song.startTime()}`}\n*Requested by ${song.requester()}*`
+                                }
+                            })
                         }
                     })
-                }
-            })
+                })
         }
     },
     {
@@ -390,7 +394,7 @@ module.exports = async (msg) => {
     const queueSong = new Song(msg, term)
     queue.push(queueSong)
 
-    if (queue.length === 1) {
+    if (queue.length === 1 && playlist.length === 0) {
         msg.reply("Searching songs ...")
         queue[0].play()
     } else {
