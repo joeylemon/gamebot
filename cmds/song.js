@@ -8,11 +8,24 @@ const Genius = new (require("genius-lyrics")).Client(constants.GENIUS_API_TOKEN)
 
 // Holds information about a song in the queue
 class Song {
-    constructor(msg, term) {
+    constructor(msg, term, info) {
         this.id = Math.floor(Math.random() * 1000000)
         this.msg = msg
         this.term = term
-        this.search()
+
+        // If the constructor is given a Spotify track object, populate the song info instead of searching on Genius
+        if (info) {
+            this.song = {
+                spotify: true,
+                titles: { full: `${info.track.name} by ${info.track.artists[0].name}` },
+                url: info.track.href,
+                artist: { name: info.track.artists[0].name, thumbnail: info.track.album.images[0].url, url: info.track.artists[0].href },
+                raw: { song_art_image_thumbnail_url: info.track.album.images[0].url, release_date_for_display: info.track.album.release_date }
+            }
+            this.song_length = Math.floor(info.track.duration_ms / 1000)
+        } else {
+            this.search()
+        }
     }
 
     /**
@@ -24,26 +37,32 @@ class Song {
             if (this.song && this.yt)
                 resolve()
 
-            Genius.tracks.search(this.term, { limit: 1 })
-                .then(results => {
-                    this.song = results[0]
-                    if (this.yt) resolve()
-                })
-                .catch(err => {
-                    this.song = {
-                        empty: true,
-                        raw: { song_art_image_thumbnail_url: "https://static.thenounproject.com/png/82078-200.png" },
-                        titles: { full: this.term }
-                    }
-                    if (this.yt) resolve()
-                })
+            // Search the song on Genius if we haven't already
+            if (!this.song) {
+                Genius.tracks.search(this.term, { limit: 1 })
+                    .then(results => {
+                        this.song = results[0]
+                        if (this.yt) resolve()
+                    })
+                    .catch(err => {
+                        this.song = {
+                            empty: true,
+                            raw: { song_art_image_thumbnail_url: "https://static.thenounproject.com/png/82078-200.png" },
+                            titles: { full: this.term }
+                        }
+                        if (this.yt) resolve()
+                    })
+            }
 
-            searchYoutube(`${this.term} audio`, { filter: 'video' })
-                .then(videos => {
-                    this.yt = videos[0]
-                    if (this.song) resolve()
-                })
-                .catch(err => reject(err))
+            // Search the song on YouTube if we haven't already
+            if (!this.yt) {
+                searchYoutube(`${this.term} audio`, { filter: 'video' })
+                    .then(videos => {
+                        this.yt = videos[0]
+                        if (this.song) resolve()
+                    })
+                    .catch(err => reject(err))
+            }
         })
     }
 
@@ -59,7 +78,8 @@ class Song {
      * Get how many seconds left before the song ends
      */
     endTime() {
-        return this.yt.length.sec - this.duration()
+        const length = this.yt ? this.yt.length.sec : this.song_length
+        return length - this.duration()
     }
 
     /**
@@ -113,12 +133,20 @@ class Song {
         if (this.song.empty) {
             this.msg.reply(`Now playing: ${this.term}`)
         } else {
-            const lyrics = await this.song.lyrics()
-            if (lyrics instanceof Error) {
-                lyrics = "No lyrics found"
+            let lyrics
+
+            if (this.song.spotify) {
+                lyrics = "[View the lyrics on Genius](https://genius.com)"
+            } else {
+                lyrics = await this.song.lyrics()
+                if (lyrics instanceof Error) {
+                    lyrics = "No lyrics found"
+                }
+
+                const lyricsEnd = ` ...\n[View the rest on Genius](${this.song.url})`
+                lyrics = lyrics.slice(0, constants.LYRICS_LENGTH - lyricsEnd.length) + lyricsEnd
             }
 
-            const lyricsEnd = ` ...\n[View the rest on Genius](${this.song.url})`
             this.msg.reply({
                 embed: {
                     color: 0xffffff,
@@ -133,7 +161,7 @@ class Song {
                         url: this.song.raw.song_art_image_thumbnail_url,
                     },
                     fields: [
-                        { "name": "Lyrics", "value": lyrics.slice(0, constants.LYRICS_LENGTH - lyricsEnd.length) + lyricsEnd }
+                        { "name": "Lyrics", "value": lyrics }
                     ],
                     footer: {
                         text: this.song.raw.release_date_for_display ? `Released ${this.song.raw.release_date_for_display}` : ``
@@ -241,7 +269,7 @@ const subcommands = [
                         const term = `${track.track.name.split(" (")[0]} ${track.track.artists[0].name}`
                         console.log("searching song", term)
 
-                        queue.push(new Song(msg, term))
+                        queue.push(new Song(msg, term, track))
 
                         if (queue.length === 1)
                             queue[0].play()
@@ -262,35 +290,20 @@ const subcommands = [
                 return
             }
 
-            let searched = 0
-            for (const song of queue) {
-                song.search()
-                    .then(() => {
-                        searched++
-
-                        if (searched === queue.length) {
-                            msg.reply({
-                                embed: {
-                                    color: 0xffffff,
-                                    thumbnail: {
-                                        url: queue[1].song.raw.song_art_image_thumbnail_url,
-                                    },
-                                    fields: queue.slice(1, queue.length).map(song => {
-                                        return {
-                                            name: song.song.titles.full,
-                                            value: `Will play in ${song.startTime()}\n*Requested by ${song.requester()}*`
-                                        }
-                                    })
-                                }
-                            })
+            msg.reply({
+                embed: {
+                    color: 0xffffff,
+                    thumbnail: {
+                        url: queue[1].song.raw.song_art_image_thumbnail_url,
+                    },
+                    fields: queue.slice(1, queue.length).map(song => {
+                        return {
+                            name: song.song.titles.full,
+                            value: `Will play in ${song.startTime()}\n*Requested by ${song.requester()}*`
                         }
                     })
-                    .catch(err => {
-                        searched++
-
-                        console.error(err)
-                    })
-            }
+                }
+            })
         }
     },
     {
