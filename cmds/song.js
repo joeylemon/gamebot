@@ -101,8 +101,13 @@ class Song {
         await new Promise(resolve => setTimeout(resolve, 500))
 
         // If the bot isn't in the channel, go to it
-        if (!utils.getVoiceConnection() && this.msg.member.voice.channel) {
-            this.msg.member.voice.channel.join()
+        if (!utils.getVoiceConnection()) {
+            const connection = await this.msg.member.voice.channel.join()
+            if (connection instanceof Error) {
+                console.error("could not join voice channel", connection)
+                this.msg.reply(`Couldn't join voice channel: ${connection.toString()}`)
+                return
+            }
         }
 
         try {
@@ -210,6 +215,7 @@ function stopAll() {
     }
 
     queue = []
+    playlist = []
     if (utils.getVoiceConnection())
         utils.getVoiceConnection().disconnect()
 }
