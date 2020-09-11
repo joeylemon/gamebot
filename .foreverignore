@@ -3,3 +3,4 @@ node_modules/*
 package*.json
 playtime.json
 config.json
+config.bak.json

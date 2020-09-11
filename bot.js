@@ -16,7 +16,6 @@ const utils = require('./utils.js')
 const commands = require("./commands.js")
 
 constants.client.on('ready', () => {
-    console.info(`# insults: ${utils.getInsults().length}`)
     console.info(`Logged in as ${constants.client.user.tag}!`)
 })
 
@@ -27,24 +26,17 @@ constants.client.on('message', msg => {
     // Helper function to reply
     msg.reply = (str) => { msg.channel.send(str) }
 
+    const contents = msg.content.toLowerCase()
+
     for (const cmd of commands.list) {
-        let contents = msg.content.toLowerCase()
-        let args = contents.split(" ")
+        // Check if the user typed this command
+        if (contents.split(" ")[0] === cmd.name || (cmd.contains && contents.includes(cmd.name)))
+            return cmd.action(msg)
 
-        if (args[0] === cmd.name || (cmd.contains && contents.indexOf(cmd.name) != -1)) {
-            cmd.action(msg)
-            return
-        }
-
-        // Check the command's aliases as well
-        if (cmd.aliases) {
-            for (const alias of cmd.aliases) {
-                if (contents.startsWith(alias)) {
-                    cmd.action(msg)
-                    return
-                }
-            }
-        }
+        // Check this command's aliases as well
+        const subcmd = cmd.aliases ? cmd.aliases.find(a => contents.startsWith(a)) : null
+        if (subcmd)
+            return cmd.action(msg)
     }
 
     if (msg.content.startsWith("!"))
