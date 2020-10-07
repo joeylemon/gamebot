@@ -18,6 +18,7 @@
     "kayn": "^0.10.2",
     "mathjs": "^7.2.0",
     "moment-timezone": "^0.5.31",
+    "node-schedule": "^1.3.2",
     "opusscript": "0.0.7",
     "request": "^2.88.2",
     "simpleyt": "^1.0.5",

@@ -103,6 +103,12 @@ const commands = [
     },
 
     {
+        name: "!bday",
+        aliases: ["happy birthday fucker"],
+        action: require('./cmds/bday.js')
+    },
+
+    {
         name: "rick roll",
         contains: true,
         action: (msg) => { msg.reply('https://www.youtube.com/watch?v=dQw4w9WgXcQ') }
