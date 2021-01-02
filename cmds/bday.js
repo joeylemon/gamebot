@@ -12,12 +12,17 @@ function scheduleBirthdayMessages() {
 
     for (const user of users) {
         const bday = new Date(user.birthday)
+
+        // Adjust for timezones
+        bday.setHours(bday.getHours() + 4)
+
+        // Move notification time to the correct year
         bday.setFullYear(new Date().getFullYear())
 
         schedule.scheduleJob(bday, () => {
             constants.client.channels.fetch(config.get("discord_channel_id"))
                 .then(channel => {
-                    channel.send(`Happy birthday ${user.real_name}, you little ${utils.getRandomInsult()}`, { files: ["https://i.imgur.com/KKgL784.gif"] })
+                    channel.send(`Happy birthday ${user.real_name}, you little ${utils.getRandomInsult()}`, { files: ["https://i.imgur.com/5niTqws.gif"] })
                 })
                 .catch(err => console.error(`Cannot send birthday message: ${err}`))
         })
