@@ -329,6 +329,7 @@ const subcommands = [
     },
     {
         name: "stopall",
+        aliases: ["stop"],
         usage: "!song stopall",
         desc: "Reset the queue and stop playing music",
         action: (msg) => {
@@ -337,7 +338,6 @@ const subcommands = [
     },
     {
         name: "pause",
-        aliases: ["stop"],
         usage: "!song pause",
         desc: "Pause the current song",
         action: (msg) => {
@@ -357,7 +357,7 @@ const subcommands = [
     },
     {
         name: "resume",
-        aliases: ["play"],
+        aliases: ["play", "start"],
         usage: "!song resume",
         desc: "Resume the current song",
         action: (msg) => {
